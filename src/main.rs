@@ -53,7 +53,7 @@ fn main() -> Result<()> {
     io::stdout().flush().ok();
     let password = read_password()?; //returns String
 
-    // 5) Derive 32-byte kdye with Argon2id
+    // 5) Derive 32-byte key with Argon2id
     let key = derive_key(&password, &salt, &params)?;
     // wipe password from memory
     // TODO later we can zeroize with a crate, but dropping is fine now
@@ -61,6 +61,9 @@ fn main() -> Result<()> {
 
     // 6) Ensure encrypted empty catalog exists
     ensure_empty_catalog(&conn, &key)?;
+
+    // 7) Read catalog and print
+    print_catalog(&conn, &key)?;
 
     println!("Catalog ready. Done.");
     Ok(())
@@ -159,4 +162,43 @@ fn now_unix() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
     dur.as_secs() as i64
+}
+
+fn decrypt_blob(key: &[u8; 32], nonce: &[u8; 12], ciphertext: &[u8]) -> Result<Vec<u8>> {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let pt = cipher
+        .decrypt(chacha20poly1305::Nonce::from_slice(nonce), ciphertext)
+        .map_err(|e| anyhow!("decrypt failed: {e:?}"))?;
+    Ok(pt)
+}
+
+fn print_catalog(conn: &Connection, key: &[u8; 32]) -> Result<()> {
+    // Read the one catalog row
+    let (nonce, ct): (Vec<u8>, Vec<u8>) = conn.query_row(
+        "SELECT nonce, ciphertext FROM catalog WHERE id = 1",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+
+    // Guard and convert nonce Vec<u8> -> [u8; 12]
+    if nonce.len() != 12 {
+        return Err(anyhow!("catalog nonce has wrong length: {}", nonce.len()));
+    }
+    let mut n = [0u8; 12];
+    n.copy_from_slice(&nonce);
+
+    // Decrypt to plaintext
+    let pt = decrypt_blob(key, &n, &ct)?;
+
+    // Pretty-print JSON
+    match serde_json::from_slice::<serde_json::Value>(&pt) {
+        Ok(v) => {
+            println!("Catalog (decrypted):\n{}", serde_json::to_string_pretty(&v)?);
+        }
+        Err(_) => {
+            // Fallback- print as utf-8
+            println!("Catalog (raw plaintext):\n{}", String::from_utf8_lossy(&pt));
+        }
+    }
+    Ok(())
 }
