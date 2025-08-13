@@ -32,6 +32,22 @@ CREATE TABLE IF NOT EXISTS items(
 );
 "#;
 
+// Structs for the data
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+struct ItemPlain {
+    title: String,
+    username: String,
+    password: String,
+    notes: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+struct CatalogEntry {
+    id: String,
+    title: String,
+    updated_at: i64,
+}
+
 fn main() -> Result<()> {
     // 1) Open/create vault and ensure tables exist
     let conn = Connection::open("vault.db")?;
@@ -63,7 +79,15 @@ fn main() -> Result<()> {
     ensure_empty_catalog(&conn, &key)?;
 
     // 7) Read catalog and print
-    print_catalog(&conn, &key)?;
+    list_items(&conn, &key)?;
+
+    // 8) Prompt user to add + list
+    let choice = read_line("Add an item now? (y/N): ")?;
+    if choice.eq_ignore_ascii_case("y") {
+        add_item_interactive(&conn, &key)?;
+        println!("\nDecrypted catalog after add:");
+        list_items(&conn, &key)?;
+    }
 
     println!("Catalog ready. Done.");
     Ok(())
@@ -172,8 +196,25 @@ fn decrypt_blob(key: &[u8; 32], nonce: &[u8; 12], ciphertext: &[u8]) -> Result<V
     Ok(pt)
 }
 
-fn print_catalog(conn: &Connection, key: &[u8; 32]) -> Result<()> {
-    // Read the one catalog row
+fn read_line(prompt: &str) -> Result<String> {
+    use std::io::{self, Write};
+    print!("{prompt}");
+    io::stdout().flush().ok();
+    let mut s = String::new();
+    io::stdin().read_line(&mut s)?;
+    Ok(s.trim().to_string())
+}
+
+fn new_id() -> Result<String> {
+    // 16 random bytes -> hex string id
+    let mut b = [0u8; 16];
+    getrandom::getrandom(&mut b)
+        .map_err(|e| anyhow!("getrandom failed: {:?}", e))?;
+    Ok(b.iter().map(|x| format!("{:02x}", x)).collect())
+}
+
+fn load_catalog(conn: &Connection, key: &[u8; 32]) -> Result<Vec<CatalogEntry>> {
+    // read row
     let (nonce, ct): (Vec<u8>, Vec<u8>) = conn.query_row(
         "SELECT nonce, ciphertext FROM catalog WHERE id = 1",
         [],
@@ -187,18 +228,78 @@ fn print_catalog(conn: &Connection, key: &[u8; 32]) -> Result<()> {
     let mut n = [0u8; 12];
     n.copy_from_slice(&nonce);
 
-    // Decrypt to plaintext
     let pt = decrypt_blob(key, &n, &ct)?;
+    if pt.is_empty() {
+        return Ok(Vec::new());
+    }
+    let v: Vec<CatalogEntry> = serde_json::from_slice(&pt)
+        .map_err(|e| anyhow!("catalog json decode failed: {e:?}"))?;
+    Ok(v)
+}
 
-    // Pretty-print JSON
-    match serde_json::from_slice::<serde_json::Value>(&pt) {
-        Ok(v) => {
-            println!("Catalog (decrypted):\n{}", serde_json::to_string_pretty(&v)?);
-        }
-        Err(_) => {
-            // Fallback- print as utf-8
-            println!("Catalog (raw plaintext):\n{}", String::from_utf8_lossy(&pt));
-        }
+fn save_catalog(conn: &Connection, key: &[u8; 32], entries: &[CatalogEntry]) -> Result<()> {
+    let pt = serde_json::to_vec(entries)?;
+    let (ct, nonce) = encrypt_blob(key, &pt)?;
+    let now = now_unix();
+    conn.execute(
+        "UPDATE catalog SET nonce = ?, ciphertext = ?, updated_at = ? WHERE id = 1",
+        params![&nonce[..], &ct, now],
+    )?;
+    Ok(())
+}
+
+fn add_item_interactive(conn: &Connection, key: &[u8; 32]) -> Result<()> {
+    // Collect fields (mask the secret input)
+    let title = read_line("Title: ")?;
+    let username = read_line("Username: ")?;
+    print!("Password (hidden): ");
+    std::io::stdout().flush().ok();
+    let password = rpassword::read_password()?;
+    let notes = read_line("Notes (optional): ")?;
+
+    // Build plaintext item
+    let item = ItemPlain {
+        title: title.clone(),
+        username,
+        password,
+        notes
+    };
+    let pt = serde_json::to_vec(&item)?;
+
+    // Encrypt + insert into items
+    let (ct, nonce) = encrypt_blob(key, &pt)?;
+    let id = new_id()?;
+    let now = now_unix();
+    conn.execute(
+        "INSERT INTO items (id, nonce, ciphertext, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        params![&id, &nonce[..], &ct, now, now],
+    )?;
+
+    // Update catalog
+    let mut entries = load_catalog(conn, key)?;
+    // If an entry with the same id exists (shouldn't), replace title; else push
+    if let Some(e) = entries.iter_mut().find(|e| e.id == id) {
+        e.title = title;
+        e.updated_at = now;
+    } else {
+        entries.push(CatalogEntry { id, title, updated_at: now });
+    }
+
+    save_catalog(conn, key, &entries)?;
+
+    println!("Item added.");
+    Ok(())
+}
+
+fn list_items(conn: &Connection, key: &[u8; 32]) -> Result<()> {
+    let entries = load_catalog(conn, key)?;
+    if entries.is_empty() {
+        println!("(catalog is empty)");
+        return Ok(());
+    }
+    println!("{:<36}  {:<30}  {}", "ID", "Title", "Updated");
+    for e in entries {
+        println!("{:<36}  {:<30}  {}", e.id, e.title, e.updated_at);
     }
     Ok(())
 }
