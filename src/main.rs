@@ -71,6 +71,8 @@ enum Cmd {
     List,
     // Show a single item by full ID
     Show { id: String },
+    // Delete a single item with ID
+    Delete { id: String },
 }
 
 /* --- helpers for unlock --- */
@@ -130,6 +132,15 @@ fn main() -> Result<()> {
             let key = derive_key_from_header(&conn, &pw)?;
             ensure_empty_catalog(&conn, &key)?;
             show_item(&conn, &key, &id)?;
+        }
+        Cmd::Delete { id } => {
+            let conn = open_and_init(&cli.db)?;
+            let pw = prompt_password()?;
+            let key = derive_key_from_header(&conn, &pw)?;
+            ensure_empty_catalog(&conn, &key)?;
+            delete_item(&conn, &key, &id)?;
+            // Show remaining items
+            list_items(&conn, &key)?;
         }
     }
 
@@ -373,5 +384,27 @@ fn show_item(conn: &Connection, key: &[u8; 32], id: &str) -> Result<()> {
         println!("Notes:    {}", item.notes);
     }
 
+    Ok(())
+}
+
+fn delete_item(conn: &Connection, key: &[u8; 32], id: &str) -> Result<()> {
+    // Delete the encrypted row
+    let rows = conn.execute("DELETE FROM items WHERE id = ?", [id])?;
+    if rows == 0 {
+        println!("No item found with ID {id}");
+        return Ok(());
+    }
+
+    // Update catalog: remove entry and re-encrypt
+    let mut entries = load_catalog(conn, key)?;
+    let before = entries.len();
+    entries.retain(|e| e.id != id);
+    if entries.len() == before {
+        // Catalog didn't have entry
+        println!("Deleted item, but it wasn't in the catalog list.");
+    }
+    
+    save_catalog(conn, key, &entries)?;
+    println!("Deleted {id}");
     Ok(())
 }
