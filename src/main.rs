@@ -4,7 +4,7 @@ use std::io::{self, Write};
 use chacha20poly1305::{aead::{Aead, KeyInit}, ChaCha20Poly1305};
 use argon2::{Argon2, Params};
 use rpassword::read_password;
-use clap::{Parser, Subcommand};
+use clap::{Parser};
 
 // Schema for the vault
 const SCHEMA_SQL: &str = r#"
@@ -73,57 +73,66 @@ enum Cmd {
     Show { id: String },
 }
 
+/* --- helpers for unlock --- */
+
+fn prompt_password() -> Result<String> {
+    print!("Enter master password: ");
+    io::stdout().flush().ok();
+    Ok(read_password()?)
+}
+
+fn open_and_init(db_path: &str) -> Result<Connection> {
+    let conn = Connection::open(db_path)?;
+    conn.execute_batch(SCHEMA_SQL)?;
+    ensure_header(&conn)?;
+    Ok(conn)
+}
+
+fn derive_key_from_header(conn: &Connection, password: &str) -> Result<[u8; 32]> {
+    let (salt, mem_kib, iters, parallelism) = load_kdf_params(&conn)?;
+    let params = Params::new(mem_kib as u32, iters as u32, parallelism as u32, Some(32))
+        .map_err(|e| anyhow!("bad Argon2 params: {e:?}"))?;
+    derive_key(password, &salt, &params)
+}
+
 /* --- main function --- */
 
 fn main() -> Result<()> {
-    // 1) Open/create vault and ensure tables exist
-    let conn = Connection::open("vault.db")?;
-    conn.execute_batch(SCHEMA_SQL)?;
-    println!("Schema ready.");
+    let cli = Cli::parse();
 
-    // 2) Ensure header row exists
-    ensure_header(&conn)?;
-    println!("Header ready.");
-
-    // 3) Load KDF inputs from header
-    let (salt, mem_kib, iters, parallelism) = load_kdf_params(&conn)?;
-    // Argon2 params (output key len = 32 bytes)
-    let params = Params::new(mem_kib as u32, iters as u32, parallelism as u32, Some(32))
-        .map_err(|e| anyhow!("bad Argon2 params: {e:?}"))?;
-
-    // 4) Ask user for master password (no echo)
-    print!("Enter master password: ");
-    io::stdout().flush().ok();
-    let password = read_password()?; //returns String
-
-    // 5) Derive 32-byte key with Argon2id
-    let key = derive_key(&password, &salt, &params)?;
-    // wipe password from memory
-    // TODO later we can zeroize with a crate, but dropping is fine now
-    drop(password);
-
-    // 6) Ensure encrypted empty catalog exists
-    ensure_empty_catalog(&conn, &key)?;
-
-    // 7) Read catalog and print
-    list_items(&conn, &key)?;
-
-    // 8) Prompt user to add + list
-    let choice = read_line("Add an item now? (y/N): ")?;
-    if choice.eq_ignore_ascii_case("y") {
-        add_item_interactive(&conn, &key)?;
-        println!("\nDecrypted catalog after add:");
-        list_items(&conn, &key)?;
+    match cli.cmd {
+        Cmd::Init => {
+            let conn = open_and_init(&cli.db)?;
+            // also ensure empty catalog exists (idempotent)
+            let pw = prompt_password()?;
+            let key = derive_key_from_header(&conn, &pw)?;
+            ensure_empty_catalog(&conn, &key)?;
+            println!("Initialized vault at '{}'", &cli.db);
+        }
+        Cmd::Add => {
+            let conn = open_and_init(&cli.db)?;
+            let pw = prompt_password()?;
+            let key = derive_key_from_header(&conn, &pw)?;
+            ensure_empty_catalog(&conn, &key)?;
+            add_item_interactive(&conn, &key)?;
+            list_items(&conn, &key)?;
+        }
+        Cmd::List => {
+            let conn = open_and_init(&cli.db)?;
+            let pw = prompt_password()?;
+            let key = derive_key_from_header(&conn, &pw)?;
+            ensure_empty_catalog(&conn, &key)?;
+            list_items(&conn, &key)?;
+        }
+        Cmd::Show { id } => {
+            let conn = open_and_init(&cli.db)?;
+            let pw = prompt_password()?;
+            let key = derive_key_from_header(&conn, &pw)?;
+            ensure_empty_catalog(&conn, &key)?;
+            show_item(&conn, &key, &id)?;
+        }
     }
 
-    // 9) Prompt user to show item
-    let choice = read_line("Show an item? (y/N): ")?;
-    if choice.eq_ignore_ascii_case("y") {
-        let id = read_line("Enter item ID: ")?;
-        show_item(&conn, &key, &id)?;
-    }
-
-    println!("Catalog ready. Done.");
     Ok(())
 }
 
@@ -154,9 +163,7 @@ fn ensure_header(conn: &Connection) -> Result<()> {
         )?;
 
         println!("Inserted header with new random salt.");
-    } else {
-        println!("Header already present.");
-    }
+    } 
 
     Ok(())
 }
