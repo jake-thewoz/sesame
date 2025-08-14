@@ -4,6 +4,7 @@ use std::io::{self, Write};
 use chacha20poly1305::{aead::{Aead, KeyInit}, ChaCha20Poly1305};
 use argon2::{Argon2, Params};
 use rpassword::read_password;
+use clap::{Parser, Subcommand};
 
 // Schema for the vault
 const SCHEMA_SQL: &str = r#"
@@ -48,6 +49,32 @@ struct CatalogEntry {
     updated_at: i64,
 }
 
+/* --- CLI types --- */
+
+#[derive(Parser)]
+#[command(name="sesame", version)]
+struct Cli {
+    // Path to vault database
+    #[arg(long, default_value = "vault.db")]
+    db: String,
+    #[command(subcommand)]
+    cmd: Cmd,
+}
+
+#[derive(Parser)]
+enum Cmd {
+    // Init header + empty encrypted catalog (idempotent)
+    Init,
+    // Add new item (interactive prompts)
+    Add,
+    // List catalog entries (titles + ids)
+    List,
+    // Show a single item by full ID
+    Show { id: String },
+}
+
+/* --- main function --- */
+
 fn main() -> Result<()> {
     // 1) Open/create vault and ensure tables exist
     let conn = Connection::open("vault.db")?;
@@ -87,6 +114,13 @@ fn main() -> Result<()> {
         add_item_interactive(&conn, &key)?;
         println!("\nDecrypted catalog after add:");
         list_items(&conn, &key)?;
+    }
+
+    // 9) Prompt user to show item
+    let choice = read_line("Show an item? (y/N): ")?;
+    if choice.eq_ignore_ascii_case("y") {
+        let id = read_line("Enter item ID: ")?;
+        show_item(&conn, &key, &id)?;
     }
 
     println!("Catalog ready. Done.");
@@ -301,5 +335,36 @@ fn list_items(conn: &Connection, key: &[u8; 32]) -> Result<()> {
     for e in entries {
         println!("{:<36}  {:<30}  {}", e.id, e.title, e.updated_at);
     }
+    Ok(())
+}
+
+fn show_item(conn: &Connection, key: &[u8; 32], id: &str) -> Result<()> {
+    // Fetch encrypted row by ID
+    let (nonce, ct): (Vec<u8>, Vec<u8>) = conn.query_row(
+        "SELECT nonce, ciphertext FROM items WHERE id = ?",
+        [id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).map_err(|_| anyhow!("No item found with ID {id}"))?;
+
+    // Check and convert nonce Vec<u8> -> [u8; 12]
+    if nonce.len() != 12 {
+        return Err(anyhow!("catalog nonce has wrong length: {}", nonce.len()));
+    }
+    let mut n = [0u8; 12];
+    n.copy_from_slice(&nonce);
+
+    // Decrypt into plaintext JSON
+    let pt = decrypt_blob(key, &n, &ct)?;
+
+    // Parse into struct and print
+    let item: ItemPlain = serde_json::from_slice(&pt)
+        .map_err(|e| anyhow!("failed to parse item JSON: {e:?}"))?;
+    println!("Title:    {}", item.title);
+    println!("Username: {}", item.username);
+    println!("Password: {}", item.password);
+    if !item.notes.trim().is_empty() {
+        println!("Notes:    {}", item.notes);
+    }
+
     Ok(())
 }
