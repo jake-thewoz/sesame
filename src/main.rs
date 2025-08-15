@@ -369,25 +369,9 @@ fn list_items(conn: &Connection, key: &[u8; 32]) -> Result<()> {
 
 fn show_item(conn: &Connection, key: &[u8; 32], id: &str) -> Result<()> {
     // Fetch encrypted row by ID
-    let (nonce, ct): (Vec<u8>, Vec<u8>) = conn.query_row(
-        "SELECT nonce, ciphertext FROM items WHERE id = ?",
-        [id],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    ).map_err(|_| anyhow!("No item found with ID {id}"))?;
+    let item = load_item(conn, key, id)?;
 
-    // Check and convert nonce Vec<u8> -> [u8; 12]
-    if nonce.len() != 12 {
-        return Err(anyhow!("catalog nonce has wrong length: {}", nonce.len()));
-    }
-    let mut n = [0u8; 12];
-    n.copy_from_slice(&nonce);
-
-    // Decrypt into plaintext JSON
-    let pt = decrypt_blob(key, &n, &ct)?;
-
-    // Parse into struct and print
-    let item: ItemPlain = serde_json::from_slice(&pt)
-        .map_err(|e| anyhow!("failed to parse item JSON: {e:?}"))?;
+    // Print values
     println!("Title:    {}", item.title);
     println!("Username: {}", item.username);
     println!("Password: {}", item.password);
