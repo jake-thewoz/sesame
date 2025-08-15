@@ -73,6 +73,8 @@ enum Cmd {
     Show { id: String },
     // Delete a single item with ID
     Delete { id: String },
+    // Edit a single item with ID
+    Edit { id: String },
 }
 
 /* --- helpers for unlock --- */
@@ -141,6 +143,15 @@ fn main() -> Result<()> {
             delete_item(&conn, &key, &id)?;
             // Show remaining items
             list_items(&conn, &key)?;
+        }
+        Cmd::Edit { id } => {
+            let conn = open_and_init(&cli.db)?;
+            let pw = prompt_password()?;
+            let key = derive_key_from_header(&conn, &pw)?;
+            ensure_empty_catalog(&conn, &key)?;
+            edit_item(&conn, &key, &id)?;
+            // Show updated entry for confirmation
+            show_item(&conn, &key, &id)?;
         }
     }
 
@@ -387,6 +398,31 @@ fn show_item(conn: &Connection, key: &[u8; 32], id: &str) -> Result<()> {
     Ok(())
 }
 
+fn load_item(conn: &Connection, key: &[u8; 32], id: &str) -> Result<ItemPlain> {
+    // Fetch encrypted row by ID
+    let (nonce, ct): (Vec<u8>, Vec<u8>) = conn.query_row(
+        "SELECT nonce, ciphertext FROM items WHERE id = ?",
+        [id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).map_err(|_| anyhow!("No item found with ID {id}"))?;
+
+    // Check and convert nonce Vec<u8> -> [u8; 12]
+    if nonce.len() != 12 {
+        return Err(anyhow!("catalog nonce has wrong length: {}", nonce.len()));
+    }
+    let mut n = [0u8; 12];
+    n.copy_from_slice(&nonce);
+
+    // Decrypt into plaintext JSON
+    let pt = decrypt_blob(key, &n, &ct)?;
+
+    // Parse into struct and print
+    let item: ItemPlain = serde_json::from_slice(&pt)
+        .map_err(|e| anyhow!("failed to parse item JSON: {e:?}"))?;
+
+    Ok(item)
+}
+
 fn delete_item(conn: &Connection, key: &[u8; 32], id: &str) -> Result<()> {
     // Delete the encrypted row
     let rows = conn.execute("DELETE FROM items WHERE id = ?", [id])?;
@@ -406,5 +442,72 @@ fn delete_item(conn: &Connection, key: &[u8; 32], id: &str) -> Result<()> {
     
     save_catalog(conn, key, &entries)?;
     println!("Deleted {id}");
+    Ok(())
+}
+
+fn prompt_with_default(label: &str, current: &str) -> Result<String> {
+    use std::io::{self, Write};
+    print!("{label} [{current}]: ");
+    io::stdout().flush().ok();
+    let mut s = String::new();
+    io::stdin().read_line(&mut s)?;
+    let s = s.trim().to_string();
+    if s.is_empty() { Ok(current.to_string()) } else { Ok(s) }
+}
+
+fn prompt_password_optional(current_hidden_note: &str) -> Result<Option<String>> {
+    // Return Some(new) if user typed one, or None if they pressed Enter
+    use std::io::{self, Write};
+    print!("Password (hidden) [{current_hidden_note}]: ");
+    io::stdout().flush().ok();
+    let pw = rpassword::read_password()?; // empty string if Enter
+    if pw.is_empty() { Ok(None) } else { Ok(Some(pw)) }
+}
+
+fn edit_item(conn: &Connection, key: &[u8; 32], id: &str) -> Result<()> {
+    // 1) Load current
+    let mut item = load_item(conn, key, id)?;
+
+    // 2) Prompt (Enter keeps existing)
+    let new_title = prompt_with_default("Title", &item.title)?;
+    let new_username = prompt_with_default("Username", &item.username)?;
+    let pw_opt = prompt_password_optional("*hidden*")?;
+    let new_notes = prompt_with_default("Notes", &item.notes)?;
+
+    if let Some(new_pw) = pw_opt {
+        item.password = new_pw;
+    }
+    item.title = new_title;
+    item.username = new_username;
+    item.notes = new_notes;
+
+    // 3) Re-encrypt and update row
+    let pt = serde_json::to_vec(&item)?;
+    let (ct, nonce) = encrypt_blob(key, &pt)?;
+    let now = now_unix();
+    let rows = conn.execute(
+        "UPDATE items SET nonce = ?, ciphertext = ?, updated_at = ? WHERE id = ?",
+        params![&nonce[..], &ct, now, id],
+    )?;
+    if rows == 0 {
+        return Err(anyhow!("Item disappeared during edit (id {id})"));
+    }
+
+    // 4) Update catalog title + updated_at, then re-encrypt/save
+    let mut entries = load_catalog(conn, key)?;
+    if let Some(e) = entries.iter_mut().find(|e| e.id == id) {
+        e.title = item.title.clone();
+        e.updated_at = now;
+    } else {
+        // Edge-case: if catalog missed it, add it back so list stays consistent
+        entries.push(CatalogEntry {
+            id: id.to_string(),
+            title: item.title.clone(),
+            updated_at: now
+        });
+    }
+    save_catalog(conn, key, &entries)?;
+
+    println!("Edited item {id}");
     Ok(())
 }
