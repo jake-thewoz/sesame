@@ -3,6 +3,7 @@ use rusqlite::{Connection, params};
 
 use crate::util;
 use crate::crypto;
+use crate::db::Vault;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct CatalogEntry {
@@ -11,6 +12,7 @@ pub struct CatalogEntry {
     pub updated_at: i64,
 }
 
+// Used by Vault::open, so needs conn and key args
 pub fn ensure_empty_catalog(conn: &Connection, key: &[u8; 32]) -> Result<()> {
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM catalog WHERE id = 1",
@@ -32,9 +34,9 @@ pub fn ensure_empty_catalog(conn: &Connection, key: &[u8; 32]) -> Result<()> {
     Ok(())
 }
 
-pub fn load_catalog(conn: &Connection, key: &[u8; 32]) -> Result<Vec<CatalogEntry>> {
+pub fn load_catalog(v: &Vault) -> Result<Vec<CatalogEntry>> {
     // read row
-    let (nonce, ct): (Vec<u8>, Vec<u8>) = conn.query_row(
+    let (nonce, ct): (Vec<u8>, Vec<u8>) = v.conn.query_row(
         "SELECT nonce, ciphertext FROM catalog WHERE id = 1",
         [],
         |row| Ok((row.get(0)?, row.get(1)?)),
@@ -47,7 +49,7 @@ pub fn load_catalog(conn: &Connection, key: &[u8; 32]) -> Result<Vec<CatalogEntr
     let mut n = [0u8; 12];
     n.copy_from_slice(&nonce);
 
-    let pt = crypto::decrypt_blob(key, &n, &ct)?;
+    let pt = crypto::decrypt_blob(&*v.key, &n, &ct)?;
     if pt.is_empty() {
         return Ok(Vec::new());
     }
@@ -56,29 +58,29 @@ pub fn load_catalog(conn: &Connection, key: &[u8; 32]) -> Result<Vec<CatalogEntr
     Ok(v)
 }
 
-fn load_catalog_sorted(conn: &Connection, key: &[u8; 32]) -> Result<Vec<CatalogEntry>> {
-    let mut v = load_catalog(conn, key)?;
+fn load_catalog_sorted(v: &Vault) -> Result<Vec<CatalogEntry>> {
+    let mut v_sort = load_catalog(v)?;
 
     // Order: title asc, then id asc
-    v.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase())
+    v_sort.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase())
         .then(a.id.cmp(&b.id))
     );
-    Ok(v)
+    Ok(v_sort)
 }
 
-pub fn save_catalog(conn: &Connection, key: &[u8; 32], entries: &[CatalogEntry]) -> Result<()> {
+pub fn save_catalog(v: &Vault, entries: &[CatalogEntry]) -> Result<()> {
     let pt = serde_json::to_vec(entries)?;
-    let (ct, nonce) = crypto::encrypt_blob(key, &pt)?;
+    let (ct, nonce) = crypto::encrypt_blob(&*v.key, &pt)?;
     let now = util::now_unix();
-    conn.execute(
+    v.conn.execute(
         "UPDATE catalog SET nonce = ?, ciphertext = ?, updated_at = ? WHERE id = 1",
         params![&nonce[..], &ct, now],
     )?;
     Ok(())
 }
 
-pub fn list_items(conn: &Connection, key: &[u8; 32]) -> Result<()> {
-    let entries = load_catalog_sorted(conn, key)?;
+pub fn list_items(v: &Vault) -> Result<()> {
+    let entries = load_catalog_sorted(v)?;
     if entries.is_empty() {
         println!("(catalog is empty)");
         return Ok(());
@@ -90,8 +92,8 @@ pub fn list_items(conn: &Connection, key: &[u8; 32]) -> Result<()> {
     Ok(())
 }
 
-pub fn resolve_selector_to_id(conn: &Connection, key: &[u8; 32], sel: &str) -> Result<String> {
-    let entries = load_catalog_sorted(conn, key)?;
+pub fn resolve_selector_to_id(v: &Vault, sel: &str) -> Result<String> {
+    let entries = load_catalog_sorted(v)?;
     if entries.is_empty() {
         return Err(anyhow!("catalog is empty"));
     }

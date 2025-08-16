@@ -1,5 +1,7 @@
 use anyhow::{Result, anyhow};
 use rusqlite::{Connection, params};
+use zeroize::Zeroizing;
+use std::path::Path;
 
 // Schema for the vault
 const SCHEMA_SQL: &str = r#"
@@ -28,11 +30,34 @@ CREATE TABLE IF NOT EXISTS items(
 );
 "#;
 
-pub fn open_and_init(db_path: &str) -> Result<Connection> {
-    let conn = Connection::open(db_path)?;
-    conn.execute_batch(SCHEMA_SQL)?;
-    ensure_header(&conn)?;
-    Ok(conn)
+pub struct Vault {
+    pub conn: rusqlite::Connection,
+    pub key: Zeroizing<[u8; 32]>,
+}
+
+impl Vault {
+    // Open/create DB, ensure schema/header, derive key, ensure catalog exists
+    pub fn open(db_path: &str, password: &str) -> Result<Self> {
+        // TODO: use new_file to change output to user if true
+        let _new_file = !Path::new(db_path).exists();
+        let conn = Connection::open(db_path)?;
+
+        // Optional durability
+        enable_wal(&conn)?;
+
+        // Schema + header
+        conn.execute_batch(SCHEMA_SQL)?;
+        ensure_header(&conn)?;
+
+        // Derive key from header params
+        let key_bytes: [u8; 32] = crate::crypto::derive_key_from_header(&conn, password)?;
+        let key = Zeroizing::new(key_bytes);
+
+        // Ensure catalog row exists (idempotent)
+        crate::catalog::ensure_empty_catalog(&conn, &*key)?;
+
+        Ok(Vault { conn, key })
+    }
 }
 
 fn ensure_header(conn: &Connection) -> Result<()> {
@@ -77,4 +102,10 @@ pub fn load_kdf_params(conn: &Connection) -> Result<(Vec<u8>, i64, i64, i64)> {
         return Err(anyhow!("header has invalid salt length"));
     }
     Ok((salt, mem_kib, iters, parallelism))
+}
+
+pub fn enable_wal(conn: &Connection) -> rusqlite::Result<()> {
+    conn.pragma_update(None, "journal_mode", &"WAL")?;
+    conn.pragma_update(None, "synchronous", &"FULL")?;
+    Ok(())
 }

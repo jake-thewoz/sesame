@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
 use std::io::{self, Write};
 use rpassword::read_password;
+use zeroize::Zeroizing;
 
 pub fn read_line(prompt: &str) -> Result<String> {
     use std::io::{self, Write};
@@ -11,10 +12,10 @@ pub fn read_line(prompt: &str) -> Result<String> {
     Ok(s.trim().to_string())
 }
 
-pub fn prompt_password() -> Result<String> {
+pub fn prompt_password() -> Result<Zeroizing<String>> {
     print!("Enter master password: ");
     io::stdout().flush().ok();
-    Ok(read_password()?)
+    Ok(Zeroizing::new(read_password()?))
 }
 
 pub fn prompt_with_default(label: &str, current: &str) -> Result<String> {

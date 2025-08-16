@@ -42,55 +42,48 @@ fn main() -> Result<()> {
 
     match cli.cmd {
         Cmd::Init => {
-            let conn = db::open_and_init(&cli.db)?;
-            // also ensure empty catalog exists (idempotent)
             let pw = util::prompt_password()?;
-            let key = crypto::derive_key_from_header(&conn, &pw)?;
-            catalog::ensure_empty_catalog(&conn, &key)?;
+            let v = db::Vault::open(&cli.db, pw.as_str())?;
+            catalog::ensure_empty_catalog(&v.conn, &*v.key)?;
             println!("Initialized vault at '{}'", &cli.db);
         }
         Cmd::Add => {
-            let conn = db::open_and_init(&cli.db)?;
             let pw = util::prompt_password()?;
-            let key = crypto::derive_key_from_header(&conn, &pw)?;
-            catalog::ensure_empty_catalog(&conn, &key)?;
-            items::add_item_interactive(&conn, &key)?;
-            catalog::list_items(&conn, &key)?;
+            let v = db::Vault::open(&cli.db, pw.as_str())?;
+            catalog::ensure_empty_catalog(&v.conn, &*v.key)?;
+            items::add_item_interactive(&v)?;
+            catalog::list_items(&v)?;
         }
         Cmd::List => {
-            let conn = db::open_and_init(&cli.db)?;
             let pw = util::prompt_password()?;
-            let key = crypto::derive_key_from_header(&conn, &pw)?;
-            catalog::ensure_empty_catalog(&conn, &key)?;
-            catalog::list_items(&conn, &key)?;
+            let v = db::Vault::open(&cli.db, pw.as_str())?;
+            catalog::ensure_empty_catalog(&v.conn, &*v.key)?;
+            catalog::list_items(&v)?;
         }
         Cmd::Show { sel } => {
-            let conn = db::open_and_init(&cli.db)?;
             let pw = util::prompt_password()?;
-            let key = crypto::derive_key_from_header(&conn, &pw)?;
-            catalog::ensure_empty_catalog(&conn, &key)?;
-            let id = catalog::resolve_selector_to_id(&conn, &key, &sel)?;
-            items::show_item(&conn, &key, &id)?;
+            let v = db::Vault::open(&cli.db, pw.as_str())?;
+            catalog::ensure_empty_catalog(&v.conn, &*v.key)?;
+            let id = catalog::resolve_selector_to_id(&v, &sel)?;
+            items::show_item(&v, &id)?;
         }
         Cmd::Delete { sel } => {
-            let conn = db::open_and_init(&cli.db)?;
             let pw = util::prompt_password()?;
-            let key = crypto::derive_key_from_header(&conn, &pw)?;
-            catalog::ensure_empty_catalog(&conn, &key)?;
-            let id = catalog::resolve_selector_to_id(&conn, &key, &sel)?;
-            items::delete_item(&conn, &key, &id)?;
+            let v = db::Vault::open(&cli.db, pw.as_str())?;
+            catalog::ensure_empty_catalog(&v.conn, &*v.key)?;
+            let id = catalog::resolve_selector_to_id(&v, &sel)?;
+            items::delete_item(&v, &id)?;
             // Show remaining items
-            catalog::list_items(&conn, &key)?;
+            catalog::list_items(&v)?;
         }
         Cmd::Edit { sel } => {
-            let conn = db::open_and_init(&cli.db)?;
             let pw = util::prompt_password()?;
-            let key = crypto::derive_key_from_header(&conn, &pw)?;
-            catalog::ensure_empty_catalog(&conn, &key)?;
-            let id = catalog::resolve_selector_to_id(&conn, &key, &sel)?;
-            items::edit_item(&conn, &key, &id)?;
+            let v = db::Vault::open(&cli.db, pw.as_str())?;
+            catalog::ensure_empty_catalog(&v.conn, &*v.key)?;
+            let id = catalog::resolve_selector_to_id(&v, &sel)?;
+            items::edit_item(&v, &id)?;
             // Show updated entry for confirmation
-            items::show_item(&conn, &key, &id)?;
+            items::show_item(&v, &id)?;
         }
     }
 
