@@ -1,5 +1,6 @@
 use anyhow::{Result};
 use clap::{Parser};
+use zeroize::Zeroizing;
 
 mod util;
 mod crypto;
@@ -28,7 +29,15 @@ enum Cmd {
     // List catalog entries (titles + ids)
     List,
     // Show a single item by full ID
-    Show { sel: String },
+    Show {
+        sel: String,
+        // Copy password into clipboard
+        #[arg(long)]
+        copy: bool,
+        // Seconds to auto-clear
+        #[arg(long, default_value_t = 20)]
+        timeout: u64
+    },
     // Delete a single item with ID
     Delete { sel: String },
     // Edit a single item with ID
@@ -43,34 +52,35 @@ fn main() -> Result<()> {
     match cli.cmd {
         Cmd::Init => {
             let pw = util::prompt_password()?;
-            let v = db::Vault::open(&cli.db, pw.as_str())?;
-            catalog::ensure_empty_catalog(&v.conn, &*v.key)?;
+            let _v = db::Vault::open(&cli.db, pw.as_str())?;
             println!("Initialized vault at '{}'", &cli.db);
         }
         Cmd::Add => {
             let pw = util::prompt_password()?;
             let v = db::Vault::open(&cli.db, pw.as_str())?;
-            catalog::ensure_empty_catalog(&v.conn, &*v.key)?;
             items::add_item_interactive(&v)?;
             catalog::list_items(&v)?;
         }
         Cmd::List => {
             let pw = util::prompt_password()?;
             let v = db::Vault::open(&cli.db, pw.as_str())?;
-            catalog::ensure_empty_catalog(&v.conn, &*v.key)?;
             catalog::list_items(&v)?;
         }
-        Cmd::Show { sel } => {
+        Cmd::Show { sel, copy, timeout } => {
             let pw = util::prompt_password()?;
             let v = db::Vault::open(&cli.db, pw.as_str())?;
-            catalog::ensure_empty_catalog(&v.conn, &*v.key)?;
             let id = catalog::resolve_selector_to_id(&v, &sel)?;
             items::show_item(&v, &id)?;
+
+            if copy {
+                let item = items::load_item(&v, &id)?;
+                let secret = Zeroizing::new(item.password.clone());
+                util::clipboard_copy_pw_temporary(secret, timeout)?;
+            }
         }
         Cmd::Delete { sel } => {
             let pw = util::prompt_password()?;
             let v = db::Vault::open(&cli.db, pw.as_str())?;
-            catalog::ensure_empty_catalog(&v.conn, &*v.key)?;
             let id = catalog::resolve_selector_to_id(&v, &sel)?;
             items::delete_item(&v, &id)?;
             // Show remaining items
@@ -79,7 +89,6 @@ fn main() -> Result<()> {
         Cmd::Edit { sel } => {
             let pw = util::prompt_password()?;
             let v = db::Vault::open(&cli.db, pw.as_str())?;
-            catalog::ensure_empty_catalog(&v.conn, &*v.key)?;
             let id = catalog::resolve_selector_to_id(&v, &sel)?;
             items::edit_item(&v, &id)?;
             // Show updated entry for confirmation

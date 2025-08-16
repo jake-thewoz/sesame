@@ -15,3 +15,4 @@ serde_json = "1"
 rpassword = "7"
 clap = { version = "4", features = ["derive"] }
 zeroize = { version = "1", features = ["zeroize_derive"] }
+arboard = "3"
