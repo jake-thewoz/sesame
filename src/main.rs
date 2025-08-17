@@ -42,6 +42,18 @@ enum Cmd {
     Delete { sel: String },
     // Edit a single item with ID
     Edit { sel: String },
+    // Generate a random passowrd of len length
+    // TODO: handle attack vector of non-clearing clipboard/terminal
+    Gen { 
+        #[arg(long, default_value_t = 16)]
+        len: usize,
+        // Copy password into clipboard
+        #[arg(long)]
+        copy: bool,
+        // Seconds to auto-clear (default is no auto-clear)
+        #[arg(long, default_value_t = 0)]
+        timeout: u64
+    },
 }
 
 /* --- main function --- */
@@ -109,6 +121,16 @@ fn main() -> Result<()> {
 
             items::edit_item(&v, &id)?;
             items::show_item(&v, &id)?;
+        }
+        Cmd::Gen { len, copy, timeout } => {
+            let new_pw = util::gen_password(len)?;
+            println!("Generated password.");
+
+            if copy {
+                util::clipboard_copy_pw_temporary(new_pw, timeout)?;
+            } else {
+                println!("{}", new_pw.as_str());
+            }
         }
     }
 

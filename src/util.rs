@@ -67,6 +67,28 @@ pub fn confirm(prompt: &str) -> bool {
     }
 
 }
+
+pub fn gen_password(len: usize) -> Result<Zeroizing<String>> {
+    // no I, l, 1, 0, O to avoid confusion
+    // hacky attempt to bias towards even distribution
+    // TODO: change this function to guarantee at least 1 of each type
+    const ALPHABET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ\
+                            abcdefghijkmnopqrstuvwxyz\
+                            234567892345678923456789\
+                            !@#$%^&*!@#$%^&*!@#$%^&*";
+
+    let mut out = String::with_capacity(len);
+    for _ in 0..len {
+        let mut b = [0u8; 4];
+        getrandom::getrandom(&mut b)
+            .map_err(|e| anyhow!("getrandom failed: {:?}", e))?;
+        let idx = (u32::from_le_bytes(b) as usize) % ALPHABET.len();
+        out.push(ALPHABET[idx] as char);
+    }
+
+    Ok(Zeroizing::new(out))
+}
+
 /* --- Copy to clipboard functions --- */
 
 // Try to set clipboard using arboard; Ok(()) if successful
