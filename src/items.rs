@@ -79,10 +79,12 @@ pub fn add_item_interactive(v: &Vault) -> Result<()> {
     let (ct, nonce) = crypto::encrypt_blob(&*v.key, &pt)?;
     let id = util::new_id()?;
     let now = util::now_unix();
-    v.conn.execute(
+    let tx = v.conn.unchecked_transaction()?;
+    tx.execute(
         "INSERT INTO items (id, nonce, ciphertext, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
         params![&id, &nonce[..], &ct, now, now],
     )?;
+    tx.commit()?;
 
     // Update catalog
     let mut entries = catalog::load_catalog(v)?;
@@ -121,13 +123,15 @@ pub fn edit_item(v: &Vault, id: &str) -> Result<()> {
     let pt = serde_json::to_vec(&item)?;
     let (ct, nonce) = crypto::encrypt_blob(&*v.key, &pt)?;
     let now = util::now_unix();
-    let rows = v.conn.execute(
+    let tx = v.conn.unchecked_transaction()?;
+    let rows = tx.execute(
         "UPDATE items SET nonce = ?, ciphertext = ?, updated_at = ? WHERE id = ?",
         params![&nonce[..], &ct, now, id],
     )?;
     if rows == 0 {
         return Err(anyhow!("Item disappeared during edit (id {id})"));
     }
+    tx.commit()?;
 
     // 4) Update catalog title + updated_at, then re-encrypt/save
     let mut entries = catalog::load_catalog(v)?;
@@ -150,11 +154,13 @@ pub fn edit_item(v: &Vault, id: &str) -> Result<()> {
 
 pub fn delete_item(v: &Vault, id: &str) -> Result<()> {
     // Delete the encrypted row
-    let rows = v.conn.execute("DELETE FROM items WHERE id = ?", [id])?;
+    let tx = v.conn.unchecked_transaction()?;
+    let rows = tx.execute("DELETE FROM items WHERE id = ?", [id])?;
     if rows == 0 {
         println!("No item found with ID {id}");
         return Ok(());
     }
+    tx.commit()?;
 
     // Update catalog: remove entry and re-encrypt
     let mut entries = catalog::load_catalog(v)?;

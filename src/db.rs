@@ -78,10 +78,12 @@ fn ensure_header(conn: &Connection) -> Result<()> {
         getrandom::getrandom(&mut salt)
             .map_err(|e| anyhow::anyhow!("getrandom failed: {:?}", e))?;
 
-        conn.execute(
+        let tx = conn.unchecked_transaction()?;
+        tx.execute(
             "INSERT INTO header (id, format_version, kdf_salt, kdf_mem_kib, kdf_iters, kdf_parallelism) VALUES (1, ?, ?, ?, ?, ?)",
             params![format_version, &salt[..], kdf_mem_kib, kdf_iters, kdf_parallelism],
         )?;
+        tx.commit()?;
 
         println!("Inserted header with new random salt.");
     } 

@@ -24,10 +24,12 @@ pub fn ensure_empty_catalog(conn: &Connection, key: &[u8; 32]) -> Result<()> {
         let plaintext = b"[]"; // empty JSON list
         let (ciphertext, nonce) = crypto::encrypt_blob(key, plaintext)?;
         let now = util::now_unix();
-        conn.execute(
+        let tx = conn.unchecked_transaction()?;
+        tx.execute(
             "INSERT INTO catalog (id, nonce, ciphertext, updated_at) VALUES (1, ?, ?, ?)",
             params![&nonce[..], &ciphertext, now],
         )?;
+        tx.commit()?;
         println!("Created encrypted empty catalog.");
     }
 
@@ -72,10 +74,13 @@ pub fn save_catalog(v: &Vault, entries: &[CatalogEntry]) -> Result<()> {
     let pt = serde_json::to_vec(entries)?;
     let (ct, nonce) = crypto::encrypt_blob(&*v.key, &pt)?;
     let now = util::now_unix();
-    v.conn.execute(
+    let tx = v.conn.unchecked_transaction()?;
+    tx.execute(
         "UPDATE catalog SET nonce = ?, ciphertext = ?, updated_at = ? WHERE id = 1",
         params![&nonce[..], &ct, now],
     )?;
+    tx.commit()?;
+
     Ok(())
 }
 
