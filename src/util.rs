@@ -55,6 +55,20 @@ pub fn now_unix() -> i64 {
     dur.as_secs() as i64
 }
 
+pub fn confirm(prompt: &str) -> bool {
+    print!("{prompt} [y/N]: ");
+    let _ = io::stdout().flush();
+
+    let mut input = String::new();
+    if io::stdin().read_line(&mut input).is_ok() {
+        matches!(input.trim(), "y" | "Y")
+    } else {
+        false
+    }
+
+}
+/* --- Copy to clipboard functions --- */
+
 // Try to set clipboard using arboard; Ok(()) if successful
 fn try_arboard_set(text: &str) -> Result<()> {
     let mut cb = arboard::Clipboard::new()

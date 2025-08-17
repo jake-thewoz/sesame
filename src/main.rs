@@ -82,16 +82,32 @@ fn main() -> Result<()> {
             let pw = util::prompt_password()?;
             let v = db::Vault::open(&cli.db, pw.as_str())?;
             let id = catalog::resolve_selector_to_id(&v, &sel)?;
+
+            // confirm before deleting
+            let item = items::load_item(&v, &id)?;
+            let title = &item.title;
+            if !util::confirm(&format!("Delete '{}' ({})?", title, id)) {
+                println!("Aborted.");
+                return Ok(());
+            }
+
             items::delete_item(&v, &id)?;
-            // Show remaining items
             catalog::list_items(&v)?;
         }
         Cmd::Edit { sel } => {
             let pw = util::prompt_password()?;
             let v = db::Vault::open(&cli.db, pw.as_str())?;
             let id = catalog::resolve_selector_to_id(&v, &sel)?;
+
+            // confirm before editing
+            let item = items::load_item(&v, &id)?;
+            let title = &item.title;
+            if !util::confirm(&format!("Edit '{}' ({})?", title, id)) {
+                println!("Aborted.");
+                return Ok(());
+            }
+
             items::edit_item(&v, &id)?;
-            // Show updated entry for confirmation
             items::show_item(&v, &id)?;
         }
     }
