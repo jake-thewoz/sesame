@@ -42,9 +42,6 @@ impl Vault {
         let _new_file = !Path::new(db_path).exists();
         let conn = Connection::open(db_path)?;
 
-        // Optional durability
-        enable_wal(&conn)?;
-
         // Schema + header
         conn.execute_batch(SCHEMA_SQL)?;
         ensure_header(&conn)?;
@@ -102,10 +99,4 @@ pub fn load_kdf_params(conn: &Connection) -> Result<(Vec<u8>, i64, i64, i64)> {
         return Err(anyhow!("header has invalid salt length"));
     }
     Ok((salt, mem_kib, iters, parallelism))
-}
-
-pub fn enable_wal(conn: &Connection) -> rusqlite::Result<()> {
-    conn.pragma_update(None, "journal_mode", &"WAL")?;
-    conn.pragma_update(None, "synchronous", &"FULL")?;
-    Ok(())
 }
