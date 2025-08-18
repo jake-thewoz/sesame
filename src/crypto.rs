@@ -26,7 +26,7 @@ pub fn encrypt_blob(key: &[u8; 32], plaintext: &[u8]) -> Result<(Vec<u8>, [u8; 1
     let cipher = ChaCha20Poly1305::new(key.into());
     let mut nonce = [0u8; 12];
     getrandom::getrandom(&mut nonce)
-        .map_err(|e| anyhow!("getrandom failed: {:?}", e))?;
+        .map_err(|e| anyhow!("nonce generation failed (getrandom): {:?}", e))?;
     let ct = cipher.encrypt(chacha20poly1305::Nonce::from_slice(&nonce), plaintext)
         .map_err(|e| anyhow!("encrypt failed: {e:?}"))?;
 

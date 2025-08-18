@@ -54,6 +54,8 @@ enum Cmd {
         #[arg(long, default_value_t = 0)]
         timeout: u64
     },
+    // Change master password
+    ChangeMaster,
 }
 
 /* --- main function --- */
@@ -131,6 +133,15 @@ fn main() -> Result<()> {
             } else {
                 println!("{}", new_pw.as_str());
             }
+        }
+        Cmd::ChangeMaster => {
+            let old_pw = util::prompt_password()?;
+            let v = db::Vault::open(&cli.db, old_pw.as_str())?;
+            println!("Setting new master password.");
+            let new_pw = util::prompt_new_password()?;
+
+            db::set_master_password(&v, old_pw.as_str(), new_pw.as_str())?;
+            println!("New master password set.");
         }
     }
 

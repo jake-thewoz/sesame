@@ -21,6 +21,21 @@ pub fn prompt_password() -> Result<Zeroizing<String>> {
     Ok(Zeroizing::new(read_password()?))
 }
 
+pub fn prompt_new_password() -> Result<Zeroizing<String>> {
+    print!("Enter new master password: ");
+    io::stdout().flush().ok();
+    let pw1: Zeroizing<String> = Zeroizing::new(read_password()?);
+
+    print!("Confirm new master password: ");
+    io::stdout().flush().ok();
+    let pw2: Zeroizing<String> = Zeroizing::new(read_password()?);
+
+    if pw1 != pw2 {
+        anyhow::bail!("Passwords do not match");
+    }
+    Ok(pw1)
+}
+
 pub fn prompt_with_default(label: &str, current: &str) -> Result<String> {
     use std::io::{self, Write};
     print!("{label} [{current}]: ");
