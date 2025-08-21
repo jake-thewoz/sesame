@@ -46,6 +46,10 @@ impl Vault {
             println!("Creating new vault at {}", db_path);
         }
 
+        // Restrict file permissions for mac and linux
+        #[cfg(unix)]
+        restrict_vault_perms(db_path)?;
+
         // Schema + header
         conn.execute_batch(SCHEMA_SQL)?;
         ensure_header(&conn)?;
@@ -59,6 +63,14 @@ impl Vault {
 
         Ok(Vault { conn, key })
     }
+}
+
+#[cfg(unix)]
+fn restrict_vault_perms(path: &str) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = std::fs::metadata(path)?.permissions();
+    perms.set_mode(0o600);
+    std::fs::set_permissions(path, perms)
 }
 
 fn ensure_header(conn: &Connection) -> Result<()> {
