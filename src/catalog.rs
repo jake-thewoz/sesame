@@ -129,3 +129,29 @@ pub fn resolve_selector_to_id(v: &Vault, sel: &str) -> Result<String> {
     
     Ok(first.unwrap().id.clone())
 }
+
+pub fn search_titles(v: &Vault, query: &String, limit: usize) -> Result<()> {
+    let needle = query.to_lowercase();
+    let mut entries = load_catalog(v)?;
+
+    // Filter and sort by most recently updated
+    entries.retain(|e| e.title.to_lowercase().contains(&needle));
+    entries.sort_by_key(|e| std::cmp::Reverse(e.updated_at));
+
+    if limit > 0 && entries.len() > limit { entries.truncate(limit); }
+
+    if entries.is_empty() {
+        println!("No matches for '{}'", query);
+        return Ok(());
+    }
+
+    // Show short list
+    println!("{:<10}   {}", "ID", "Title");
+    for e in entries.iter() {
+        let id_prefix = e.id.chars().take(10).collect::<String>();
+        println!("{}   {}", id_prefix, e.title);
+    }
+    println!("\nUse the id (at least 4 chars) with `show`/`edit`/`delete`");
+
+    Ok(())
+}
