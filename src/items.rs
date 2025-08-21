@@ -73,7 +73,7 @@ pub fn add_item_interactive(v: &Vault) -> Result<()> {
         password,
         notes
     };
-    let pt = serde_json::to_vec(&item)?;
+    let pt = zeroize::Zeroizing::new(serde_json::to_vec(&item)?);
 
     // Encrypt + insert into items
     let (ct, nonce) = crypto::encrypt_blob(&*v.key, &pt)?;
@@ -92,7 +92,7 @@ pub fn add_item_interactive(v: &Vault) -> Result<()> {
     if let Some(e) = entries.iter_mut().find(|e| e.id == id) {
         e.title = title;
         e.updated_at = now;
-    } else {
+        } else {
         entries.push(catalog::CatalogEntry { id, title, updated_at: now });
     }
 
@@ -120,7 +120,7 @@ pub fn edit_item(v: &Vault, id: &str) -> Result<()> {
     item.notes = new_notes;
 
     // 3) Re-encrypt and update row
-    let pt = serde_json::to_vec(&item)?;
+    let pt = zeroize::Zeroizing::new(serde_json::to_vec(&item)?);
     let (ct, nonce) = crypto::encrypt_blob(&*v.key, &pt)?;
     let now = util::now_unix();
     let tx = v.conn.unchecked_transaction()?;

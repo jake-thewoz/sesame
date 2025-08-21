@@ -6,7 +6,7 @@ use argon2::{Argon2, Params};
 use crate::db;
 
 pub fn derive_key_from_header(conn: &Connection, password: &str) -> Result<[u8; 32]> {
-    let (salt, mem_kib, iters, parallelism) = db::load_kdf_params(&conn)?;
+    let (salt, mem_kib, iters, parallelism) = db::load_kdf_params(conn)?;
     let params = Params::new(mem_kib as u32, iters as u32, parallelism as u32, Some(32))
         .map_err(|e| anyhow!("bad Argon2 params: {e:?}"))?;
     derive_key(password, &salt, &params)

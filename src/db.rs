@@ -39,9 +39,12 @@ pub struct Vault {
 impl Vault {
     // Open/create DB, ensure schema/header, derive key, ensure catalog exists
     pub fn open(db_path: &str, password: &str) -> Result<Self> {
-        // TODO: use new_file to change output to user if true
-        let _new_file = !Path::new(db_path).exists();
+        let new_file = !Path::new(db_path).exists();
         let conn = Connection::open(db_path)?;
+
+        if new_file {
+            println!("Creating new vault at {}", db_path);
+        }
 
         // Schema + header
         conn.execute_batch(SCHEMA_SQL)?;

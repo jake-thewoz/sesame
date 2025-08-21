@@ -117,10 +117,8 @@ fn try_arboard_set(text: &str) -> Result<()> {
 
 // Try to read clipboard. If fails, return empty string
 fn arboard_get_text_safe() -> String {
-    if let Ok(mut cb) = arboard::Clipboard::new() {
-        if let Ok(t) = cb.get_text() {
-            return t;
-        }
+    if let Ok(mut cb) = arboard::Clipboard::new() && let Ok(t) = cb.get_text() {
+        return t;
     }
     String::new()
 }

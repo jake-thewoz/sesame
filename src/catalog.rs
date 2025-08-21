@@ -1,11 +1,13 @@
 use anyhow::{Result, anyhow};
 use rusqlite::{Connection, params};
+use zeroize::Zeroize;
 
 use crate::util;
 use crate::crypto;
 use crate::db::Vault;
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Zeroize)]
+#[zeroize(drop)]
 pub struct CatalogEntry {
     pub id: String,
     pub title: String,
