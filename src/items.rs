@@ -92,7 +92,7 @@ pub fn add_item_interactive(v: &Vault) -> Result<()> {
     if let Some(e) = entries.iter_mut().find(|e| e.id == id) {
         e.title = title;
         e.updated_at = now;
-        } else {
+    } else {
         entries.push(catalog::CatalogEntry { id, title, updated_at: now });
     }
 
