@@ -57,13 +57,15 @@ enum Cmd {
     // Change master password
     ChangeMaster,
     // Search titles in catalog
-    // TODO: search username and notes, too
     Search { 
         // Text to search for
         query: String,
         // Max results (0 is unlimited)
         #[arg(long, default_value_t = 0)]
-        limit: usize
+        limit: usize,
+        // Optionally search usernames and notes, too
+        #[arg(long)]
+        deep: bool,
     },
 }
 
@@ -152,10 +154,10 @@ fn main() -> Result<()> {
             db::set_master_password(&v, old_pw.as_str(), new_pw.as_str())?;
             println!("New master password set.");
         }
-        Cmd::Search { query, limit } => {
+        Cmd::Search { query, limit, deep } => {
             let pw = util::prompt_password()?;
             let v = db::Vault::open(&cli.db, pw.as_str())?;
-            catalog::search_titles(&v, &query, limit)?;
+            catalog::search(&v, &query, limit, deep)?;
         }
     }
 

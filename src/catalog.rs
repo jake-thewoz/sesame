@@ -132,27 +132,54 @@ pub fn resolve_selector_to_id(v: &Vault, sel: &str) -> Result<String> {
     Ok(first.unwrap().id.clone())
 }
 
-pub fn search_titles(v: &Vault, query: &String, limit: usize) -> Result<()> {
+pub fn search(v: &Vault, query: &String, limit: usize, deep: bool) -> Result<()> {
     let needle = query.to_lowercase();
     let mut entries = load_catalog(v)?;
-
-    // Filter and sort by most recently updated
-    entries.retain(|e| e.title.to_lowercase().contains(&needle));
     entries.sort_by_key(|e| std::cmp::Reverse(e.updated_at));
 
-    if limit > 0 && entries.len() > limit { entries.truncate(limit); }
+    let mut results = Vec::new();
 
-    if entries.is_empty() {
-        println!("No matches for '{}'", query);
+    // Go through catalog entries looking for hits
+    for e in entries.iter() {
+        let hit_title = e.title.to_lowercase().contains(&needle);
+        let mut hit_user = false;
+        let mut hit_notes = false;
+
+        if !hit_title && deep {
+            // Decrypt the item associated with the entry
+            // Item will zeroize when dropped
+            let item = crate::items::load_item(v, &e.id)?;
+            hit_user = item.username.to_lowercase().contains(&needle);
+            hit_notes = item.notes.to_lowercase().contains(&needle);
+            // item drops here
+        }
+
+        if hit_title || hit_user || hit_notes {
+            results.push((e, hit_title, hit_user, hit_notes));
+            if limit > 0 && results.len() >= limit {
+                break;
+            }
+        }
+    }
+
+    if results.is_empty() {
+        println!("No matches for '{}'{}", query, if deep {" (deep)"} else {""});
         return Ok(());
     }
 
     // Show short list
-    println!("{:<10}   {}", "ID", "Title");
-    for e in entries.iter() {
-        let id_prefix = e.id.chars().take(10).collect::<String>();
-        println!("{}   {}", id_prefix, e.title);
+    println!("{:<10}   {:<10}   {:<10}", "ID", "Title", "Matching Fields");
+    for (e, title, username, notes) in results.iter() {
+        let id: String = e.id.chars().take(8).collect();
+        let mut fields: Vec<&str> = Vec::new();
+        if *title { fields.push("title"); }
+        if *username { fields.push("username"); }
+        if *notes { fields.push("notes"); }
+
+        let fields_string = &format!("({})", fields.join(", "));
+        println!("{:<10}   {:<10}   {:<10}", id, e.title, fields_string);
     }
+
     println!("\nUse the id (at least 4 chars) with `show`/`edit`/`delete`");
 
     Ok(())
