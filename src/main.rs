@@ -67,6 +67,14 @@ enum Cmd {
         #[arg(long)]
         deep: bool,
     },
+    // Create a backup of the vault
+    Backup { 
+        // Destination filepath
+        to: String,
+        // Fail if dest already exists
+        #[arg(long)]
+        overwrite: bool,
+    },
 }
 
 /* --- main function --- */
@@ -158,6 +166,12 @@ fn main() -> Result<()> {
             let pw = util::prompt_password()?;
             let v = db::Vault::open(&cli.db, pw.as_str())?;
             catalog::search(&v, &query, limit, deep)?;
+        }
+        Cmd::Backup { to, overwrite } => {
+            let pw = util::prompt_password()?;
+            let v = db::Vault::open(&cli.db, pw.as_str())?;
+            db::backup_to_path(&v, &to, overwrite)?;
+            println!("Backup written to {}", to);
         }
     }
 

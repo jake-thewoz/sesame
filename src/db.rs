@@ -215,3 +215,39 @@ pub fn set_master_password(v: &Vault, old_pw: &str, new_pw: &str) -> Result<()> 
 
     Ok(())
 }
+
+pub fn backup_to_path(v: &Vault, to: &str, overwrite: bool) -> Result<()> {
+    let dest = Path::new(&to);
+    // Check if path is the same as current DB path
+    let src = v.conn.path().ok_or_else(|| anyhow!("Source DB has no path"))?;
+    if dest == Path::new(src) {
+        bail!("Destination and source are the same. Refusing to overwrite live databse.");
+    }
+
+    // If something's at dest, and no overwrite, fail
+    if !overwrite && dest.exists() {
+        bail!("Destination already exists. Use a different path or overwrite with --overwrite flag.");
+    }
+
+    // Ensure dest parent dir exists
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    // Open dest Connection
+    let mut dest_conn = rusqlite::Connection::open(dest)?;
+
+    // Backup
+    {
+        use rusqlite::backup::Backup;
+        let backup = Backup::new(&v.conn, &mut dest_conn)?;
+        // -1 means copy all pages in one go
+        backup.step(-1)?;
+    }
+
+    // Tighten permissions on unix
+    #[cfg(unix)]
+    restrict_vault_perms(to)?;
+
+    Ok(())
+}
