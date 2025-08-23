@@ -25,7 +25,7 @@ It stores an encrypted vault on your machine- no cloud, no telemetry, and no dep
 **Build from source (Rust required):**
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/sesame.git
+git clone https://github.com/jake-thewoz/sesame.git
 cd sesame
 cargo build --release
 ./target/release/sesame --help
@@ -72,4 +72,4 @@ View the SECURITY.md to see the full threat model.
 
 ## License
 
-This project is licensed under the Apache 2.0 License. View the [license](LICENSE) for details.
+This project is licensed under the Apache 2.0 License. View the [license](LICENSE.md) for details.
