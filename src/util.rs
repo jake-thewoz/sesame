@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use std::io::{self, Write};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -31,7 +31,7 @@ pub fn prompt_new_password() -> Result<Zeroizing<String>> {
     let pw2: Zeroizing<String> = Zeroizing::new(read_password()?);
 
     if pw1 != pw2 {
-        anyhow::bail!("Passwords do not match");
+        bail!("Passwords do not match");
     }
     Ok(pw1)
 }
@@ -83,25 +83,90 @@ pub fn confirm(prompt: &str) -> bool {
 
 }
 
-pub fn gen_password(len: usize) -> Result<Zeroizing<String>> {
-    // no I, l, 1, 0, O to avoid confusion
-    // hacky attempt to bias towards even distribution
-    // TODO: change this function to guarantee at least 1 of each type
-    const ALPHABET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ\
-                            abcdefghijkmnopqrstuvwxyz\
-                            234567892345678923456789\
-                            !@#$%^&*!@#$%^&*!@#$%^&*";
+// Rejection-sampling uniform index in [0, n)
+fn rand_index(n: usize) -> Result<usize> {
+    if n == 0 { bail!("empty alphabet") }
 
-    let mut out = String::with_capacity(len);
-    for _ in 0..len {
+    use getrandom::getrandom;
+    let n32 = n as u32;
+    let limit = u32::MAX - (u32::MAX % n32);
+    loop {
         let mut b = [0u8; 4];
-        getrandom::getrandom(&mut b)
+        getrandom(&mut b)
             .map_err(|e| anyhow!("getrandom failed: {:?}", e))?;
-        let idx = (u32::from_le_bytes(b) as usize) % ALPHABET.len();
-        out.push(ALPHABET[idx] as char);
+        let x = u32::from_le_bytes(b);
+        if x < limit { return Ok((x % n32) as usize) }
     }
 
-    Ok(Zeroizing::new(out))
+}
+
+fn pick_one(alphabet: &[u8]) -> Result<u8> {
+    Ok(alphabet[rand_index(alphabet.len())?])
+}
+
+pub fn gen_password(
+    len: usize,
+    no_upper: bool,
+    no_lower: bool,
+    no_digits: bool,
+    no_specials: bool,
+) -> Result<Zeroizing<String>> {
+    // no I, l, 1, 0, O to avoid confusion
+    const UPPERS: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ";
+    const LOWERS: &[u8] = b"abcdefghijkmnopqrstuvwxyz";
+    const DIGITS: &[u8] = b"23456789";
+    const SPECIALS: &[u8] = b"!@#$%^&*()[]{}-_=+:;,.?/";
+
+    // Build enabled buckets
+    let uppers: Vec<u8> = if !no_upper { UPPERS.to_vec() } else { Vec::new() };
+    let lowers: Vec<u8> = if !no_lower { LOWERS.to_vec() } else { Vec::new() };
+    let digits: Vec<u8> = if !no_digits { DIGITS.to_vec() } else { Vec::new() };
+    let specials: Vec<u8> = if !no_specials { SPECIALS.to_vec() } else { Vec::new() };
+
+    // Collect enabled buckets
+    let mut buckets: Vec<&[u8]> = Vec::new();
+    if !uppers.is_empty() { buckets.push(&uppers); }
+    if !lowers.is_empty() { buckets.push(&lowers); }
+    if !digits.is_empty() { buckets.push(&digits); }
+    if !specials.is_empty() { buckets.push(&specials); }
+
+    if buckets.is_empty() {
+        bail!("All character classes disabled. Enable at least one class.");
+    }
+    if len < buckets.len() {
+        bail!("Length {} too short for {} required categories. Increase --len or disable more buckets.", len, buckets.len());
+    }
+
+    // Build union alphabet
+    let union_len = uppers.len() + lowers.len() + digits.len() + specials.len();
+    let mut union = Vec::with_capacity(union_len);
+    union.extend(&uppers);
+    union.extend(&lowers);
+    union.extend(&digits);
+    union.extend(&specials);
+
+    //  --------- Start building the password ---------
+    let mut out = Vec::with_capacity(len);
+
+    // 1) Ensure at least one from each bucket
+    for bucket in &buckets {
+        out.push(pick_one(bucket)?);
+    }
+
+    // 2) Fill the rest
+    while out.len() < len {
+        out.push(pick_one(&union)?);
+    }
+
+    // 3) Shuffle using Fisher-Yates algorithm
+    for i in (1..out.len()).rev() {
+        let j = rand_index(i + 1)?;
+        out.swap(i, j);
+    }
+
+    // Return Zeroizing<String>
+    let s = String::from_utf8(out).expect("ascii alphabets only");
+    Ok(Zeroizing::new(s))
 }
 
 /* --- Copy to clipboard functions --- */

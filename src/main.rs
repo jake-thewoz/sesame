@@ -52,7 +52,12 @@ enum Cmd {
         copy: bool,
         // Seconds to auto-clear (default is no auto-clear)
         #[arg(long, default_value_t = 0)]
-        timeout: u64
+        timeout: u64,
+        // bucket toggles (default: all enabled)
+        #[arg(long)] no_upper: bool,
+        #[arg(long)] no_lower: bool,
+        #[arg(long)] no_digits: bool,
+        #[arg(long)] no_specials: bool,
     },
     // Change master password
     ChangeMaster,
@@ -143,8 +148,10 @@ fn main() -> Result<()> {
             items::edit_item(&v, &id)?;
             items::show_item(&v, &id)?;
         }
-        Cmd::Gen { len, copy, timeout } => {
-            let new_pw = util::gen_password(len)?;
+        Cmd::Gen { len, copy, timeout,
+            no_upper, no_lower, no_digits, no_specials
+        } => {
+            let new_pw = util::gen_password(len, no_upper, no_lower, no_digits, no_specials)?;
             println!("Generated password.");
 
             if copy {
