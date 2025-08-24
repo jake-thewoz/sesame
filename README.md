@@ -66,9 +66,16 @@ Track progress by viewing the current [issues](https://github.com/jake-thewoz/se
 
 ## Security
 
-Sesame is **local-only**, meaning it lives entirely on your machine.
+Sesame is designed to be as secure as possible. Features include:
 
-View the SECURITY.md to see the full threat model.
+- 🖥️ **Local-Only** – There is no network connectivity, so there are no attack surfaces outside of your own computer.
+- 🔐 **Argon2id key derivation** – Winner of the Password Hashing Competition, memory-hard, and designed to resist brute-force attacks.
+- ⚡ **ChaCha20-Poly1305 encryption** – Fast, secure, and trusted by projects like WireGuard and Cloudflare.
+- 🧂 **Unique salts and nonces** – Every vault and operation uses unique parameters for maximum safety.
+- 📦 **No unnecessary decryptions** – Vault items are only decrypted when specifically requested.
+- 👻 **Memory safety** – All vault information is zeroized from memory after use, so no attacker can glean anything from imaging RAM after use.
+
+Visit the [Security](SECURITY.md) tab to report a vulnerability, and check out the [Threat Model](THREAT_MODEL.md) for a more details.
 
 ## License
 
