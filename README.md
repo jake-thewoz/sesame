@@ -95,4 +95,4 @@ Get the latest builds from the **[Releases](https://github.com/jake-thewoz/sesam
 
 ## License
 
-This project is licensed under the Apache 2.0 License. View the [license](LICENSE.md) for details.
+This project is licensed under the Apache 2.0 License. View the [license](LICENSE) for details.
