@@ -115,7 +115,7 @@ jobs:
       - name: Gather files
         run: |
           mkdir upload
-          find collected -type f -name "sesame-*.tar.gz" -o -name "sesame-*.zip" -o -name "SHA256SUMS" -exec cp {} upload/ \;
+          find collected -type f \( -name "sesame-*.tar.gz" -o -name "sesame-*.zip" -o -name "SHA256SUMS" \) -exec cp {} upload/ \;
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
