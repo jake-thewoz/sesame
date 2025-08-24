@@ -77,6 +77,22 @@ Sesame is designed to be as secure as possible. Features include:
 
 Visit the [Security](SECURITY.md) tab to report a vulnerability, and check out the [Threat Model](THREAT_MODEL.md) for a more details.
 
+## Download
+
+Get the latest builds from the **[Releases](https://github.com/jake-thewoz/sesame/releases)** page.
+
+| Platform | File |
+|---|---|
+| Windows (x86_64) | `sesame-v0.1.0-x86_64-pc-windows-msvc.tar.gz` |
+| macOS (Apple Silicon) | `sesame-v0.1.0-aarch64-apple-darwin.tar.gz` |
+| macOS (Intel) | `sesame-v0.1.0-x86_64-apple-darwin.tar.gz` |
+| Linux (glibc) | `sesame-v0.1.0-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux (musl, portable) | `sesame-v0.1.0-x86_64-unknown-linux-musl.tar.gz` |
+
+**Verify integrity** with the included `SHA256SUMS`:
+- macOS/Linux: `shasum -a 256 -c SHA256SUMS`
+- Windows (PowerShell): `Get-FileHash <file> -Algorithm SHA256`
+
 ## License
 
 This project is licensed under the Apache 2.0 License. View the [license](LICENSE.md) for details.
