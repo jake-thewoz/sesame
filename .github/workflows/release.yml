@@ -1,0 +1,128 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux (glibc) and Linux (musl)
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset_ext: tar.gz
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            asset_ext: tar.gz
+          # macOS (both arches)
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset_ext: tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            asset_ext: tar.gz
+          # Windows (MSVC)
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_ext: zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+            targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Linux prerequisites (musl)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare archive
+        shell: bash
+        run: |
+          BIN_NAME=sesame
+          VERSION=${GITHUB_REF_NAME}          # e.g. v0.1.0
+          RELDIR=dist
+          mkdir -p "$RELDIR"
+
+          case "${{ matrix.os }}" in
+            Windows*)
+              OUT="target/${{ matrix.target }}/release/${BIN_NAME}.exe"
+              NAME="${BIN_NAME}-${VERSION}-${{ matrix.target }}"
+              mkdir -p "$NAME"
+              cp "$OUT" "$NAME/"
+              powershell -Command "Compress-Archive -Path \"$NAME/*\" -DestinationPath \"${RELDIR}/${NAME}.zip\""
+              ;;
+            *)
+              OUT="target/${{ matrix.target }}/release/${BIN_NAME}"
+              NAME="${BIN_NAME}-${VERSION}-${{ matrix.target }}"
+              mkdir -p "$NAME"
+              cp "$OUT" "$NAME/"
+              tar -C "$NAME" -czf "${RELDIR}/${NAME}.tar.gz" .
+              ;;
+          esac
+
+      - name: Generate SHA256
+        shell: bash
+        run: |
+          cd dist
+          shopt -s nullglob
+          for f in *; do
+            if command -v shasum >/dev/null 2>&1; then
+              shasum -a 256 "$f" | awk '{print $1"  "$2}' >> SHA256SUMS
+            else
+              sha256sum "$f" >> SHA256SUMS
+            fi
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+
+  release:
+    name: Publish Release
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: collected
+
+      - name: Gather files
+        run: |
+          mkdir upload
+          find collected -type f -name "sesame-*.tar.gz" -o -name "sesame-*.zip" -o -name "SHA256SUMS" -exec cp {} upload/ \;
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Sesame ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: upload/*
+
