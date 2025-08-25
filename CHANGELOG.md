@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- Work in progress
+- `search` now searches username, notes, and title by default (no more `--deep`)
 
 ## [0.1.0] - 2025-08-24
 
