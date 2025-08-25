@@ -132,7 +132,7 @@ pub fn resolve_selector_to_id(v: &Vault, sel: &str) -> Result<String> {
     Ok(first.unwrap().id.clone())
 }
 
-pub fn search(v: &Vault, query: &String, limit: usize, deep: bool) -> Result<()> {
+pub fn search(v: &Vault, query: &String, limit: usize) -> Result<()> {
     let needle = query.to_lowercase();
     let mut entries = load_catalog(v)?;
     entries.sort_by_key(|e| std::cmp::Reverse(e.updated_at));
@@ -145,7 +145,7 @@ pub fn search(v: &Vault, query: &String, limit: usize, deep: bool) -> Result<()>
         let mut hit_user = false;
         let mut hit_notes = false;
 
-        if !hit_title && deep {
+        if !hit_title {
             // Decrypt the item associated with the entry
             // Item will zeroize when dropped
             let item = crate::items::load_item(v, &e.id)?;
@@ -163,12 +163,12 @@ pub fn search(v: &Vault, query: &String, limit: usize, deep: bool) -> Result<()>
     }
 
     if results.is_empty() {
-        println!("No matches for '{}'{}", query, if deep {" (deep)"} else {""});
+        println!("No matches for '{}'", query);
         return Ok(());
     }
 
     // Show short list
-    println!("{:<10}   {:<10}   {:<10}", "ID", "Title", "Matching Fields");
+    println!("{:<10}   {:<12}   {:<10}", "ID", "Title", "Matching Fields");
     for (e, title, username, notes) in results.iter() {
         let id: String = e.id.chars().take(8).collect();
         let mut fields: Vec<&str> = Vec::new();
@@ -177,7 +177,7 @@ pub fn search(v: &Vault, query: &String, limit: usize, deep: bool) -> Result<()>
         if *notes { fields.push("notes"); }
 
         let fields_string = &format!("({})", fields.join(", "));
-        println!("{:<10}   {:<10}   {:<10}", id, e.title, fields_string);
+        println!("{:<10}   {:<12}   {:<10}", id, e.title, fields_string);
     }
 
     println!("\nUse the id (at least 4 chars) with `show`/`edit`/`delete`");

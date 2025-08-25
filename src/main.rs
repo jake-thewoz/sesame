@@ -68,9 +68,6 @@ enum Cmd {
         // Max results (0 is unlimited)
         #[arg(long, default_value_t = 0)]
         limit: usize,
-        // Optionally search usernames and notes, too
-        #[arg(long)]
-        deep: bool,
     },
     // Create a backup of the vault
     Backup { 
@@ -169,10 +166,10 @@ fn main() -> Result<()> {
             db::set_master_password(&v, old_pw.as_str(), new_pw.as_str())?;
             println!("New master password set.");
         }
-        Cmd::Search { query, limit, deep } => {
+        Cmd::Search { query, limit } => {
             let pw = util::prompt_password()?;
             let v = db::Vault::open(&cli.db, pw.as_str())?;
-            catalog::search(&v, &query, limit, deep)?;
+            catalog::search(&v, &query, limit)?;
         }
         Cmd::Backup { to, overwrite } => {
             let pw = util::prompt_password()?;
