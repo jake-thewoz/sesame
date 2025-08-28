@@ -77,11 +77,11 @@ Get the latest builds from the **[Releases](https://github.com/jake-thewoz/sesam
 
 | Platform | File |
 |---|---|
-| Windows (x86_64) | `sesame-v0.1.0-x86_64-pc-windows-msvc.tar.gz` |
-| macOS (Apple Silicon) | `sesame-v0.1.0-aarch64-apple-darwin.tar.gz` |
-| macOS (Intel) | `sesame-v0.1.0-x86_64-apple-darwin.tar.gz` |
-| Linux (glibc) | `sesame-v0.1.0-x86_64-unknown-linux-gnu.tar.gz` |
-| Linux (musl, portable) | `sesame-v0.1.0-x86_64-unknown-linux-musl.tar.gz` |
+| Windows (x86_64) | `sesame-v0.1.1-x86_64-pc-windows-msvc.tar.gz` |
+| macOS (Apple Silicon) | `sesame-v0.1.1-aarch64-apple-darwin.tar.gz` |
+| macOS (Intel) | `sesame-v0.1.1-x86_64-apple-darwin.tar.gz` |
+| Linux (glibc) | `sesame-v0.1.1-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux (musl, portable) | `sesame-v0.1.1-x86_64-unknown-linux-musl.tar.gz` |
 
 **Verify integrity** with the included `SHA256SUMS`:
 - macOS/Linux: `shasum -a 256 -c SHA256SUMS`
