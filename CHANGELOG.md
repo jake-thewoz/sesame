@@ -7,11 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+See current [issues](https://github.com/jake-thewoz/sesame/issues) for upcoming work.
+
+## [0.1.1] - 2025-08-28
+
 - `search` now searches username, notes, and title by default (no more `--deep`)
+- `--help` page dramatically improved, with full descriptions
+- Improvements to the `README.md`
 
 ## [0.1.0] - 2025-08-24
-
-### Added
 
 - Initial public release of **Sesame**.
 - CLI commands:
